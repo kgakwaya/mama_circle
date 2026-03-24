@@ -1,14 +1,6 @@
-/**
-List of binary file extensions.
-
-@example
-```
-import binaryExtensions = require('binary-extensions');
-
-console.log(binaryExtensions);
-//=> ['3ds', '3g2', …]
-```
-*/
-declare const binaryExtensions: readonly string[];
-
-export = binaryExtensions;
+export declare const EXPANSION_MAX = 100000;
+export type BraceExpansionOptions = {
+    max?: number;
+};
+export declare function expand(str: string, options?: BraceExpansionOptions): string[];
+//# sourceMappingURL=index.d.ts.map
