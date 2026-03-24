@@ -1,238 +1,104 @@
-/*!
- * accepts
- * Copyright(c) 2014 Jonathan Ong
- * Copyright(c) 2015 Douglas Christopher Wilson
- * MIT Licensed
- */
+'use strict';
 
-'use strict'
+Object.defineProperty(exports, "__esModule", { value: true });
+
+const picomatch = require('picomatch');
+const normalizePath = require('normalize-path');
 
 /**
- * Module dependencies.
- * @private
+ * @typedef {(testString: string) => boolean} AnymatchFn
+ * @typedef {string|RegExp|AnymatchFn} AnymatchPattern
+ * @typedef {AnymatchPattern|AnymatchPattern[]} AnymatchMatcher
  */
-
-var Negotiator = require('negotiator')
-var mime = require('mime-types')
+const BANG = '!';
+const DEFAULT_OPTIONS = {returnIndex: false};
+const arrify = (item) => Array.isArray(item) ? item : [item];
 
 /**
- * Module exports.
- * @public
+ * @param {AnymatchPattern} matcher
+ * @param {object} options
+ * @returns {AnymatchFn}
  */
-
-module.exports = Accepts
-
-/**
- * Create a new Accepts object for the given req.
- *
- * @param {object} req
- * @public
- */
-
-function Accepts (req) {
-  if (!(this instanceof Accepts)) {
-    return new Accepts(req)
+const createPattern = (matcher, options) => {
+  if (typeof matcher === 'function') {
+    return matcher;
   }
-
-  this.headers = req.headers
-  this.negotiator = new Negotiator(req)
-}
+  if (typeof matcher === 'string') {
+    const glob = picomatch(matcher, options);
+    return (string) => matcher === string || glob(string);
+  }
+  if (matcher instanceof RegExp) {
+    return (string) => matcher.test(string);
+  }
+  return (string) => false;
+};
 
 /**
- * Check if the given `type(s)` is acceptable, returning
- * the best match when true, otherwise `undefined`, in which
- * case you should respond with 406 "Not Acceptable".
- *
- * The `type` value may be a single mime type string
- * such as "application/json", the extension name
- * such as "json" or an array `["json", "html", "text/plain"]`. When a list
- * or array is given the _best_ match, if any is returned.
- *
- * Examples:
- *
- *     // Accept: text/html
- *     this.types('html');
- *     // => "html"
- *
- *     // Accept: text/*, application/json
- *     this.types('html');
- *     // => "html"
- *     this.types('text/html');
- *     // => "text/html"
- *     this.types('json', 'text');
- *     // => "json"
- *     this.types('application/json');
- *     // => "application/json"
- *
- *     // Accept: text/*, application/json
- *     this.types('image/png');
- *     this.types('png');
- *     // => undefined
- *
- *     // Accept: text/*;q=.5, application/json
- *     this.types(['html', 'json']);
- *     this.types('html', 'json');
- *     // => "json"
- *
- * @param {String|Array} types...
- * @return {String|Array|Boolean}
- * @public
+ * @param {Array<Function>} patterns
+ * @param {Array<Function>} negPatterns
+ * @param {String|Array} args
+ * @param {Boolean} returnIndex
+ * @returns {boolean|number}
  */
+const matchPatterns = (patterns, negPatterns, args, returnIndex) => {
+  const isList = Array.isArray(args);
+  const _path = isList ? args[0] : args;
+  if (!isList && typeof _path !== 'string') {
+    throw new TypeError('anymatch: second argument must be a string: got ' +
+      Object.prototype.toString.call(_path))
+  }
+  const path = normalizePath(_path, false);
 
-Accepts.prototype.type =
-Accepts.prototype.types = function (types_) {
-  var types = types_
-
-  // support flattened arguments
-  if (types && !Array.isArray(types)) {
-    types = new Array(arguments.length)
-    for (var i = 0; i < types.length; i++) {
-      types[i] = arguments[i]
+  for (let index = 0; index < negPatterns.length; index++) {
+    const nglob = negPatterns[index];
+    if (nglob(path)) {
+      return returnIndex ? -1 : false;
     }
   }
 
-  // no types, return all requested types
-  if (!types || types.length === 0) {
-    return this.negotiator.mediaTypes()
-  }
-
-  // no accept header, return first given type
-  if (!this.headers.accept) {
-    return types[0]
-  }
-
-  var mimes = types.map(extToMime)
-  var accepts = this.negotiator.mediaTypes(mimes.filter(validMime))
-  var first = accepts[0]
-
-  return first
-    ? types[mimes.indexOf(first)]
-    : false
-}
-
-/**
- * Return accepted encodings or best fit based on `encodings`.
- *
- * Given `Accept-Encoding: gzip, deflate`
- * an array sorted by quality is returned:
- *
- *     ['gzip', 'deflate']
- *
- * @param {String|Array} encodings...
- * @return {String|Array}
- * @public
- */
-
-Accepts.prototype.encoding =
-Accepts.prototype.encodings = function (encodings_) {
-  var encodings = encodings_
-
-  // support flattened arguments
-  if (encodings && !Array.isArray(encodings)) {
-    encodings = new Array(arguments.length)
-    for (var i = 0; i < encodings.length; i++) {
-      encodings[i] = arguments[i]
+  const applied = isList && [path].concat(args.slice(1));
+  for (let index = 0; index < patterns.length; index++) {
+    const pattern = patterns[index];
+    if (isList ? pattern(...applied) : pattern(path)) {
+      return returnIndex ? index : true;
     }
   }
 
-  // no encodings, return all requested encodings
-  if (!encodings || encodings.length === 0) {
-    return this.negotiator.encodings()
-  }
-
-  return this.negotiator.encodings(encodings)[0] || false
-}
+  return returnIndex ? -1 : false;
+};
 
 /**
- * Return accepted charsets or best fit based on `charsets`.
- *
- * Given `Accept-Charset: utf-8, iso-8859-1;q=0.2, utf-7;q=0.5`
- * an array sorted by quality is returned:
- *
- *     ['utf-8', 'utf-7', 'iso-8859-1']
- *
- * @param {String|Array} charsets...
- * @return {String|Array}
- * @public
+ * @param {AnymatchMatcher} matchers
+ * @param {Array|string} testString
+ * @param {object} options
+ * @returns {boolean|number|Function}
  */
+const anymatch = (matchers, testString, options = DEFAULT_OPTIONS) => {
+  if (matchers == null) {
+    throw new TypeError('anymatch: specify first argument');
+  }
+  const opts = typeof options === 'boolean' ? {returnIndex: options} : options;
+  const returnIndex = opts.returnIndex || false;
 
-Accepts.prototype.charset =
-Accepts.prototype.charsets = function (charsets_) {
-  var charsets = charsets_
+  // Early cache for matchers.
+  const mtchers = arrify(matchers);
+  const negatedGlobs = mtchers
+    .filter(item => typeof item === 'string' && item.charAt(0) === BANG)
+    .map(item => item.slice(1))
+    .map(item => picomatch(item, opts));
+  const patterns = mtchers
+    .filter(item => typeof item !== 'string' || (typeof item === 'string' && item.charAt(0) !== BANG))
+    .map(matcher => createPattern(matcher, opts));
 
-  // support flattened arguments
-  if (charsets && !Array.isArray(charsets)) {
-    charsets = new Array(arguments.length)
-    for (var i = 0; i < charsets.length; i++) {
-      charsets[i] = arguments[i]
+  if (testString == null) {
+    return (testString, ri = false) => {
+      const returnIndex = typeof ri === 'boolean' ? ri : false;
+      return matchPatterns(patterns, negatedGlobs, testString, returnIndex);
     }
   }
 
-  // no charsets, return all requested charsets
-  if (!charsets || charsets.length === 0) {
-    return this.negotiator.charsets()
-  }
+  return matchPatterns(patterns, negatedGlobs, testString, returnIndex);
+};
 
-  return this.negotiator.charsets(charsets)[0] || false
-}
-
-/**
- * Return accepted languages or best fit based on `langs`.
- *
- * Given `Accept-Language: en;q=0.8, es, pt`
- * an array sorted by quality is returned:
- *
- *     ['es', 'pt', 'en']
- *
- * @param {String|Array} langs...
- * @return {Array|String}
- * @public
- */
-
-Accepts.prototype.lang =
-Accepts.prototype.langs =
-Accepts.prototype.language =
-Accepts.prototype.languages = function (languages_) {
-  var languages = languages_
-
-  // support flattened arguments
-  if (languages && !Array.isArray(languages)) {
-    languages = new Array(arguments.length)
-    for (var i = 0; i < languages.length; i++) {
-      languages[i] = arguments[i]
-    }
-  }
-
-  // no languages, return all requested languages
-  if (!languages || languages.length === 0) {
-    return this.negotiator.languages()
-  }
-
-  return this.negotiator.languages(languages)[0] || false
-}
-
-/**
- * Convert extnames to mime.
- *
- * @param {String} type
- * @return {String}
- * @private
- */
-
-function extToMime (type) {
-  return type.indexOf('/') === -1
-    ? mime.lookup(type)
-    : type
-}
-
-/**
- * Check if mime is valid.
- *
- * @param {String} type
- * @return {Boolean}
- * @private
- */
-
-function validMime (type) {
-  return typeof type === 'string'
-}
+anymatch.default = anymatch;
+module.exports = anymatch;

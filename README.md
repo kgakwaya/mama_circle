@@ -1,140 +1,87 @@
-# accepts
+anymatch [![Build Status](https://travis-ci.org/micromatch/anymatch.svg?branch=master)](https://travis-ci.org/micromatch/anymatch) [![Coverage Status](https://img.shields.io/coveralls/micromatch/anymatch.svg?branch=master)](https://coveralls.io/r/micromatch/anymatch?branch=master)
+======
+Javascript module to match a string against a regular expression, glob, string,
+or function that takes the string as an argument and returns a truthy or falsy
+value. The matcher can also be an array of any or all of these. Useful for
+allowing a very flexible user-defined config to define things like file paths.
 
-[![NPM Version][npm-version-image]][npm-url]
-[![NPM Downloads][npm-downloads-image]][npm-url]
-[![Node.js Version][node-version-image]][node-version-url]
-[![Build Status][github-actions-ci-image]][github-actions-ci-url]
-[![Test Coverage][coveralls-image]][coveralls-url]
+__Note: This module has Bash-parity, please be aware that Windows-style backslashes are not supported as separators. See https://github.com/micromatch/micromatch#backslashes for more information.__
 
-Higher level content negotiation based on [negotiator](https://www.npmjs.com/package/negotiator).
-Extracted from [koa](https://www.npmjs.com/package/koa) for general use.
 
-In addition to negotiator, it allows:
-
-- Allows types as an array or arguments list, ie `(['text/html', 'application/json'])`
-  as well as `('text/html', 'application/json')`.
-- Allows type shorthands such as `json`.
-- Returns `false` when no types match
-- Treats non-existent headers as `*`
-
-## Installation
-
-This is a [Node.js](https://nodejs.org/en/) module available through the
-[npm registry](https://www.npmjs.com/). Installation is done using the
-[`npm install` command](https://docs.npmjs.com/getting-started/installing-npm-packages-locally):
-
+Usage
+-----
 ```sh
-$ npm install accepts
+npm install anymatch
 ```
 
-## API
+#### anymatch(matchers, testString, [returnIndex], [options])
+* __matchers__: (_Array|String|RegExp|Function_)
+String to be directly matched, string with glob patterns, regular expression
+test, function that takes the testString as an argument and returns a truthy
+value if it should be matched, or an array of any number and mix of these types.
+* __testString__: (_String|Array_) The string to test against the matchers. If
+passed as an array, the first element of the array will be used as the
+`testString` for non-function matchers, while the entire array will be applied
+as the arguments for function matchers.
+* __options__: (_Object_ [optional]_) Any of the [picomatch](https://github.com/micromatch/picomatch#options) options.
+    * __returnIndex__: (_Boolean [optional]_) If true, return the array index of
+the first matcher that that testString matched, or -1 if no match, instead of a
+boolean result.
 
 ```js
-var accepts = require('accepts')
+const anymatch = require('anymatch');
+
+const matchers = [ 'path/to/file.js', 'path/anyjs/**/*.js', /foo.js$/, string => string.includes('bar') && string.length > 10 ] ;
+
+anymatch(matchers, 'path/to/file.js'); // true
+anymatch(matchers, 'path/anyjs/baz.js'); // true
+anymatch(matchers, 'path/to/foo.js'); // true
+anymatch(matchers, 'path/to/bar.js'); // true
+anymatch(matchers, 'bar.js'); // false
+
+// returnIndex = true
+anymatch(matchers, 'foo.js', {returnIndex: true}); // 2
+anymatch(matchers, 'path/anyjs/foo.js', {returnIndex: true}); // 1
+
+// any picomatc
+
+// using globs to match directories and their children
+anymatch('node_modules', 'node_modules'); // true
+anymatch('node_modules', 'node_modules/somelib/index.js'); // false
+anymatch('node_modules/**', 'node_modules/somelib/index.js'); // true
+anymatch('node_modules/**', '/absolute/path/to/node_modules/somelib/index.js'); // false
+anymatch('**/node_modules/**', '/absolute/path/to/node_modules/somelib/index.js'); // true
+
+const matcher = anymatch(matchers);
+['foo.js', 'bar.js'].filter(matcher);  // [ 'foo.js' ]
+anymatch master* ❯
+
 ```
 
-### accepts(req)
-
-Create a new `Accepts` object for the given `req`.
-
-#### .charset(charsets)
-
-Return the first accepted charset. If nothing in `charsets` is accepted,
-then `false` is returned.
-
-#### .charsets()
-
-Return the charsets that the request accepts, in the order of the client's
-preference (most preferred first).
-
-#### .encoding(encodings)
-
-Return the first accepted encoding. If nothing in `encodings` is accepted,
-then `false` is returned.
-
-#### .encodings()
-
-Return the encodings that the request accepts, in the order of the client's
-preference (most preferred first).
-
-#### .language(languages)
-
-Return the first accepted language. If nothing in `languages` is accepted,
-then `false` is returned.
-
-#### .languages()
-
-Return the languages that the request accepts, in the order of the client's
-preference (most preferred first).
-
-#### .type(types)
-
-Return the first accepted type (and it is returned as the same text as what
-appears in the `types` array). If nothing in `types` is accepted, then `false`
-is returned.
-
-The `types` array can contain full MIME types or file extensions. Any value
-that is not a full MIME type is passed to `require('mime-types').lookup`.
-
-#### .types()
-
-Return the types that the request accepts, in the order of the client's
-preference (most preferred first).
-
-## Examples
-
-### Simple type negotiation
-
-This simple example shows how to use `accepts` to return a different typed
-respond body based on what the client wants to accept. The server lists it's
-preferences in order and will get back the best match between the client and
-server.
+#### anymatch(matchers)
+You can also pass in only your matcher(s) to get a curried function that has
+already been bound to the provided matching criteria. This can be used as an
+`Array#filter` callback.
 
 ```js
-var accepts = require('accepts')
-var http = require('http')
+var matcher = anymatch(matchers);
 
-function app (req, res) {
-  var accept = accepts(req)
+matcher('path/to/file.js'); // true
+matcher('path/anyjs/baz.js', true); // 1
 
-  // the order of this list is significant; should be server preferred order
-  switch (accept.type(['json', 'html'])) {
-    case 'json':
-      res.setHeader('Content-Type', 'application/json')
-      res.write('{"hello":"world!"}')
-      break
-    case 'html':
-      res.setHeader('Content-Type', 'text/html')
-      res.write('<b>hello, world!</b>')
-      break
-    default:
-      // the fallback is text/plain, so no need to specify it above
-      res.setHeader('Content-Type', 'text/plain')
-      res.write('hello, world!')
-      break
-  }
-
-  res.end()
-}
-
-http.createServer(app).listen(3000)
+['foo.js', 'bar.js'].filter(matcher); // ['foo.js']
 ```
 
-You can test this out with the cURL program:
-```sh
-curl -I -H'Accept: text/html' http://localhost:3000/
-```
+Changelog
+----------
+[See release notes page on GitHub](https://github.com/micromatch/anymatch/releases)
 
-## License
+- **v3.0:** Removed `startIndex` and `endIndex` arguments. Node 8.x-only.
+- **v2.0:** [micromatch](https://github.com/jonschlinkert/micromatch) moves away from minimatch-parity and inline with Bash. This includes handling backslashes differently (see https://github.com/micromatch/micromatch#backslashes for more information).
+- **v1.2:** anymatch uses [micromatch](https://github.com/jonschlinkert/micromatch)
+for glob pattern matching. Issues with glob pattern matching should be
+reported directly to the [micromatch issue tracker](https://github.com/jonschlinkert/micromatch/issues).
 
-[MIT](LICENSE)
-
-[coveralls-image]: https://badgen.net/coveralls/c/github/jshttp/accepts/master
-[coveralls-url]: https://coveralls.io/r/jshttp/accepts?branch=master
-[github-actions-ci-image]: https://badgen.net/github/checks/jshttp/accepts/master?label=ci
-[github-actions-ci-url]: https://github.com/jshttp/accepts/actions/workflows/ci.yml
-[node-version-image]: https://badgen.net/npm/node/accepts
-[node-version-url]: https://nodejs.org/en/download
-[npm-downloads-image]: https://badgen.net/npm/dm/accepts
-[npm-url]: https://npmjs.org/package/accepts
-[npm-version-image]: https://badgen.net/npm/v/accepts
+License
+-------
+[ISC](https://raw.github.com/micromatch/anymatch/master/LICENSE)
