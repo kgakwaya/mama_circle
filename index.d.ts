@@ -1,20 +1,9 @@
-type AnymatchFn = (testString: string) => boolean;
-type AnymatchPattern = string|RegExp|AnymatchFn;
-type AnymatchMatcher = AnymatchPattern|AnymatchPattern[]
-type AnymatchTester = {
-  (testString: string|any[], returnIndex: true): number;
-  (testString: string|any[]): boolean;
-}
-
-type PicomatchOptions = {dot: boolean};
-
-declare const anymatch: {
-  (matchers: AnymatchMatcher): AnymatchTester;
-  (matchers: AnymatchMatcher, testString: null, returnIndex: true | PicomatchOptions): AnymatchTester;
-  (matchers: AnymatchMatcher, testString: string|any[], returnIndex: true | PicomatchOptions): number;
-  (matchers: AnymatchMatcher, testString: string|any[]): boolean;
-}
-
-export {AnymatchMatcher as Matcher}
-export {AnymatchTester as Tester}
-export default anymatch
+export declare const balanced: (a: string | RegExp, b: string | RegExp, str: string) => false | {
+    start: number;
+    end: number;
+    pre: string;
+    body: string;
+    post: string;
+} | undefined;
+export declare const range: (a: string, b: string, str: string) => undefined | [number, number];
+//# sourceMappingURL=index.d.ts.map
